@@ -27,7 +27,7 @@ $helpers = new DefaultRegistry(array(
         var_dump(gettype($b));
         var_dump(get_class($b));
     },
-    'testHelperWithInvalidArgType' => function(string $a, string $b = null) {
+    'testHelperWithInvalidArgType' => function(string $a, ?string $b = null) {
         var_dump(func_num_args());
         var_dump($a);
         var_dump(gettype($b));

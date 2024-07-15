@@ -17,7 +17,7 @@ $helpers = new DefaultRegistry(array(
     'testHelperWithUnionType2' => function(string $a, string|int|null $b = null) {
         var_dump(func_num_args());
     },
-    'testHelperWithUnionType3' => function(string $a, stdClass|Handlebars\Options $b = null) {
+    'testHelperWithUnionType3' => function(string $a, stdClass|Handlebars\Options|null $b = null) {
         var_dump(func_num_args());
     },
 ));

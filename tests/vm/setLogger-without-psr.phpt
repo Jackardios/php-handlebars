@@ -6,18 +6,18 @@ Handlebars\VM::setLogger() without php-psr
 <?php
 namespace Psr\Log;
 interface LoggerInterface {
-    public function log($level, $message, array $context = null);
+    public function log($level, $message, ?array $context = null);
 }
 abstract class AbstractLogger implements LoggerInterface {
-    public function info($message, array $context = null) { $this->log('info', $message, $context); }
-    public function warning($message, array $context = null) { $this->log('warning', $message, $context); }
+    public function info($message, ?array $context = null) { $this->log('info', $message, $context); }
+    public function warning($message, ?array $context = null) { $this->log('warning', $message, $context); }
 }
 
 namespace Invalid;
 use Psr\Log\AbstractLogger;
 use Handlebars\VM;
 class TestLogger extends AbstractLogger {
-    public function log($level, $message, array $context = null) { var_dump($level, $message); }
+    public function log($level, $message, ?array $context = null) { var_dump($level, $message); }
 }
 $logger = new TestLogger();
 $vm = new VM();

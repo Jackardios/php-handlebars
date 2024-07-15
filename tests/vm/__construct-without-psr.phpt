@@ -11,11 +11,11 @@ if( extension_loaded('psr') ) die('skip ');
 namespace Psr\Log;
 
 interface LoggerInterface {
-    public function log($level, $message, array $context = null);
+    public function log($level, $message, ?array $context = null);
 }
 abstract class AbstractLogger implements LoggerInterface {
-    public function info($message, array $context = null) { $this->log('info', $message, $context); }
-    public function warning($message, array $context = null) { $this->log('warning', $message, $context); }
+    public function info($message, ?array $context = null) { $this->log('info', $message, $context); }
+    public function warning($message, ?array $context = null) { $this->log('warning', $message, $context); }
 }
 
 namespace IgnoreMe;
@@ -25,7 +25,7 @@ use Handlebars\VM;
 use Psr\Log\AbstractLogger;
 
 class TestLogger extends AbstractLogger {
-    public function log($level, $message, array $context = null) { var_dump($level, $message); }
+    public function log($level, $message, ?array $context = null) { var_dump($level, $message); }
 }
 
 $helpers = new DefaultRegistry();
