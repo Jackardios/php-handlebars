@@ -28,6 +28,9 @@ PHP_ARG_ENABLE(handlebars-psr, whether to enable handlebars PSR support,
 PHP_ARG_ENABLE(handlebars-hardening, whether to enable handlebars hardening support,
 [  --enable-handlebars-hardening Enable handlebars hardening support], [yes], [no])
 
+PHP_ARG_ENABLE(handlebars-coverage, whether to enable handlebars coverage support,
+[AS_HELP_STRING([--enable-handlebars-coverage], [Enable handlebars coverage support])], [no], [no])
+
 AC_DEFUN([PHP_HANDLEBARS_ADD_SOURCES], [
   PHP_HANDLEBARS_SOURCES="$PHP_HANDLEBARS_SOURCES $1"
 ])
@@ -145,6 +148,11 @@ if test "$PHP_HANDLEBARS" != "no"; then
             src/token.c
             src/tokenizer.c
         ])
+    fi
+
+    if test "$PHP_HANDLEBARS_COVERAGE" == "yes"; then
+        CFLAGS="-fprofile-arcs -ftest-coverage $CFLAGS"
+        LDFLAGS="--coverage $LDFLAGS"
     fi
 
     PHP_ADD_BUILD_DIR(src)

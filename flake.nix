@@ -2,15 +2,16 @@
   description = "php-handlebars";
 
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-24.05";
+    nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
     flake-utils = {
       url = "github:numtide/flake-utils";
       inputs.systems.follows = "systems";
     };
     mustache_spec = {
-      url = "github:jbboehr/mustache-spec";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:mustache/spec";
+      flake = false;
     };
     handlebars_spec = {
       url = "github:jbboehr/handlebars-spec";
@@ -18,13 +19,14 @@
     };
     handlebars-c = {
       url = "github:jbboehr/handlebars.c";
-      inputs.mustache_spec.follows = "mustache_spec";
-      inputs.handlebars_spec.follows = "handlebars_spec";
+      #inputs.mustache_spec.follows = "mustache_spec";
+      #inputs.handlebars_spec.follows = "handlebars_spec";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     php-psr = {
       url = "github:jbboehr/php-psr";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs-unstable.follows = "nixpkgs-unstable";
     };
     gitignore = {
       url = "github:hercules-ci/gitignore.nix";
@@ -33,6 +35,8 @@
     pre-commit-hooks = {
       url = "github:cachix/pre-commit-hooks.nix";
       inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs-stable.follows = "nixpkgs";
+      inputs.gitignore.follows = "gitignore";
     };
     nix-github-actions = {
       url = "github:nix-community/nix-github-actions";
@@ -43,6 +47,8 @@
   outputs = {
     self,
     nixpkgs,
+    nixpkgs-unstable,
+    systems,
     flake-utils,
     mustache_spec,
     handlebars_spec,
@@ -51,13 +57,12 @@
     gitignore,
     pre-commit-hooks,
     nix-github-actions,
-    ...
-  } @ args:
+  }:
     flake-utils.lib.eachDefaultSystem (
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
+        pkgs-unstable = nixpkgs-unstable.legacyPackages.${system};
         lib = pkgs.lib;
-        php = pkgs.php;
 
         src' = gitignore.lib.gitignoreSource ./.;
         src = pkgs.lib.cleanSourceWith {
@@ -84,6 +89,7 @@
         pre-commit-check = pre-commit-hooks.lib.${system}.run {
           src = src';
           hooks = {
+            actionlint.enable = true;
             alejandra.enable = true;
             #markdownlint.enable = true;
             #shellcheck.enable = true;
@@ -94,18 +100,20 @@
           stdenv ? pkgs.stdenv,
           php ? pkgs.php,
           astSupport ? false,
+          checkSupport ? false,
+          coverageSupport ? false,
         }:
           pkgs.callPackage ./nix/derivation.nix {
             inherit src;
             inherit stdenv php;
+            inherit astSupport checkSupport coverageSupport;
             buildPecl = pkgs.callPackage (nixpkgs + "/pkgs/build-support/php/build-pecl.nix") {
               inherit php stdenv;
             };
-            inherit (gitignore.lib) gitignoreSource;
-            mustache_spec = mustache_spec.packages.${system}.mustache-spec;
+            mustache_spec = mustache_spec;
             handlebars_spec = handlebars_spec.packages.${system}.handlebars-spec;
             handlebarsc = handlebars-c.packages.${system}.handlebars-c;
-            php_psr = args.php-psr.packages.${system}.php-psr;
+            php_psr = php-psr.packages.${system}.php-psr;
           };
 
         makeCheck = package:
@@ -143,6 +151,7 @@
         matrix = with pkgs; {
           php = {
             inherit php81 php82 php83;
+            php84 = pkgs-unstable.php84;
           };
           stdenv = {
             gcc = stdenv;
@@ -153,21 +162,30 @@
         };
 
         # @see https://github.com/NixOS/nixpkgs/pull/110787
-        buildConfs = lib.cartesianProductOfSets {
-          php = ["php81" "php82" "php83"];
-          stdenv = [
-            "gcc"
-            "clang"
-            # totally broken
-            # "musl"
-          ];
-          astSupport = [true false];
-        };
+        buildConfs =
+          (lib.cartesianProductOfSets {
+            php = ["php81" "php82" "php83" "php84"];
+            stdenv = [
+              "gcc"
+              "clang"
+              # totally broken
+              # "musl"
+            ];
+            astSupport = [true false];
+            coverageSupport = [false];
+          })
+          ++ (lib.cartesianProductOfSets {
+            php = ["php81" "php82" "php83" "php84"];
+            stdenv = ["gcc"];
+            astSupport = [true];
+            coverageSupport = [true];
+          });
 
         buildFn = {
           php,
           stdenv,
           astSupport ? false,
+          coverageSupport ? false,
         }:
           lib.nameValuePair
           (lib.concatStringsSep "-" (lib.filter (v: v != "") [
@@ -178,12 +196,17 @@
               then "ast"
               else ""
             )
+            (
+              if coverageSupport
+              then "coverage"
+              else ""
+            )
           ]))
           (
             makePackage {
               php = matrix.php.${php};
               stdenv = matrix.stdenv.${stdenv};
-              inherit astSupport;
+              inherit astSupport coverageSupport;
             }
           );
 
@@ -197,11 +220,11 @@
             php-handlebars-dist =
               pkgs.runCommand "handlebars-pecl.tgz"
               {
-                buildInputs = [php];
+                buildInputs = [pkgs.php];
                 inherit src;
               } ''
                 cp -r $src/* .
-                PHP_PEAR_PHP_BIN=${php}/bin/php pecl package
+                PHP_PEAR_PHP_BIN=${pkgs.php}/bin/php pecl package
                 mv handlebars-*.tgz $out
               '';
           };

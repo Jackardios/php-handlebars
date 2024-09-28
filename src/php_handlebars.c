@@ -97,6 +97,9 @@ static PHP_RINIT_FUNCTION(handlebars)
 /* }}} */
 
 /* {{{ PHP_MINIT_FUNCTION */
+const char *PHP_HANDLEBARS_MOTD =
+    "Think not that I am come to send peace on earth: I came not to send peace, but a sword. Matthew 10:34";
+
 static PHP_MINIT_FUNCTION(handlebars)
 {
     int flags = CONST_CS | CONST_PERSISTENT;
@@ -113,6 +116,7 @@ static PHP_MINIT_FUNCTION(handlebars)
     REGISTER_STRING_CONSTANT("Handlebars\\VERSION", (char *) PHP_HANDLEBARS_VERSION, flags);
     REGISTER_STRING_CONSTANT("Handlebars\\LIBVERSION", (char *) version, flags);
     REGISTER_STRING_CONSTANT("Handlebars\\LIBVERSION2", (char *) HANDLEBARS_VERSION_STRING, flags);
+    REGISTER_STRING_CONSTANT("Handlebars\\MOTD", (char *) PHP_HANDLEBARS_MOTD, flags);
 
     // Setup root contexts
     HANDLEBARS_G(root) = talloc_new(NULL);
@@ -277,6 +281,10 @@ static PHP_MINFO_FUNCTION(handlebars)
     }
 
     DISPLAY_INI_ENTRIES();
+
+    php_info_print_box_start(0);
+    PUTS(PHP_HANDLEBARS_MOTD);
+    php_info_print_box_end();
 }
 /* }}} */
 
