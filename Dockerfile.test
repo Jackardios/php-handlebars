@@ -1,0 +1,41 @@
+FROM php:8.2-cli
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    autoconf \
+    automake \
+    libtool \
+    make \
+    gcc \
+    g++ \
+    libtalloc-dev \
+    libjson-c-dev \
+    libyaml-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install handlebars.c
+RUN git clone https://github.com/jbboehr/handlebars.c.git /tmp/handlebars.c && \
+    cd /tmp/handlebars.c && \
+    autoreconf -fiv && \
+    ./configure && \
+    make && \
+    make install && \
+    ldconfig && \
+    cd / && \
+    rm -rf /tmp/handlebars.c
+
+WORKDIR /app
+
+# Copy extension source
+COPY . /app
+
+# Build and install extension with AST support
+RUN phpize && \
+    ./configure --enable-handlebars-ast && \
+    make && \
+    make install && \
+    echo "extension=handlebars.so" > /usr/local/etc/php/conf.d/handlebars.ini
+
+# Test script will be run from outside
+CMD ["php", "-v"]
