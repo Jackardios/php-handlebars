@@ -135,18 +135,10 @@ static inline struct php_handlebars_options_obj * php_handlebars_options_fetch_o
 /* {{{ php_handlebars_options_obj_free */
 static inline void php_handlebars_options_obj_free_common(struct php_handlebars_options_obj * intern)
 {
-    if (intern->options.hash) {
-        handlebars_value_dtor(intern->options.hash);
-        intern->options.hash = NULL;
-    }
-    if (intern->options.data) {
-        handlebars_value_dtor(intern->options.data);
-        intern->options.data = NULL;
-    }
-    if (intern->options.scope) {
-        handlebars_value_dtor(intern->options.scope);
-        intern->options.scope = NULL;
-    }
+    // Note: hash, data, and scope are eagerly converted to PHP properties in the constructor
+    // and their C pointers are set to NULL, so no cleanup needed here for those.
+    // The destructor in dtor_ctx will handle any remaining cleanup via options_dtor_ctx_dtor.
+
     if (intern->options.name) {
         handlebars_string_delref(intern->options.name);
         intern->options.name = NULL;
@@ -174,7 +166,7 @@ static zend_object * php_handlebars_options_obj_create(zend_class_entry * ce)
     object_properties_init(&obj->std, ce);
     obj->std.handlers = &HandlebarsOptions_obj_handlers;
 
-    // @TODO FIXME
+    // Store standard handlers for fallback in custom property handlers
     obj->std_hnd = (void *) zend_get_std_object_handlers();
     obj->options.program = -1;
     obj->options.inverse = -1;
@@ -190,6 +182,28 @@ int options_dtor_ctx_dtor(struct options_obj_dtor_ctx * dtor_ctx)
     dtor_ctx->obj->vm = NULL;
     dtor_ctx->obj->dtor_ctx = NULL;
     return 0;
+}
+
+// Helper function to eagerly convert handlebars_value to PHP property
+static inline void eager_convert_handlebars_value(
+    struct handlebars_value * src,
+    zval * z_options,
+    const char * prop_name,
+    size_t prop_len,
+    struct handlebars_value ** dest_ptr
+) {
+    if (!src) return;
+
+    zval z_value = {0};
+    handlebars_value_to_zval(src, &z_value);
+#if PHP_MAJOR_VERSION >= 8
+    zend_update_property(HandlebarsOptions_ce_ptr, PHP7TO8_Z_OBJ_P(z_options), prop_name, prop_len, &z_value);
+#else
+    zend_update_property(HandlebarsOptions_ce_ptr, z_options, prop_name, prop_len, &z_value);
+#endif
+    zval_ptr_dtor(&z_value);
+    handlebars_value_dtor(src);
+    *dest_ptr = NULL;
 }
 
 PHP_HANDLEBARS_API void php_handlebars_options_ctor(
@@ -215,20 +229,25 @@ PHP_HANDLEBARS_API void php_handlebars_options_ctor(
     if (intern->options.name) {
         intern->options.name = handlebars_string_copy_ctor(HBSCTX(vm), intern->options.name);
     }
+    // EAGER CONVERSION: Convert handlebars values to PHP properties immediately
+    // to avoid lazy loading issues with object reuse across VM lifecycles
     if (intern->options.scope) {
         intern->options.scope = (void *) mem;
         mem += HANDLEBARS_VALUE_SIZE;
         handlebars_value_value(intern->options.scope, options->scope);
+        eager_convert_handlebars_value(intern->options.scope, z_options, "scope", sizeof("scope")-1, &intern->options.scope);
     }
     if (intern->options.data) {
         intern->options.data = (void *) mem;
         mem += HANDLEBARS_VALUE_SIZE;
         handlebars_value_value(intern->options.data, options->data);
+        eager_convert_handlebars_value(intern->options.data, z_options, "data", sizeof("data")-1, &intern->options.data);
     }
     if (intern->options.hash) {
         intern->options.hash = (void *) mem;
         mem += HANDLEBARS_VALUE_SIZE;
         handlebars_value_value(intern->options.hash, options->hash);
+        eager_convert_handlebars_value(intern->options.hash, z_options, "hash", sizeof("hash")-1, &intern->options.hash);
     }
 }
 /* }}} */
@@ -270,7 +289,6 @@ static zval * hbs_read_program(READ_PROPERTY_ARGS)
         zval tmp;
         ZVAL_LONG(&tmp, intern->options.program);
         zend_update_property_ex(Z_OBJCE_P(object), object, INTERNED_FN, &tmp);
-        // @todo clear?
     }
 #endif
     return intern->std_hnd->read_property(READ_PROPERTY_ARGS_PASSTHRU);
@@ -295,81 +313,9 @@ static zval * hbs_read_inverse(READ_PROPERTY_ARGS)
 #endif
     return intern->std_hnd->read_property(READ_PROPERTY_ARGS_PASSTHRU);
 }
-static zval * hbs_read_scope(READ_PROPERTY_ARGS)
-{
-#if PHP_MAJOR_VERSION >= 8
-    struct php_handlebars_options_obj * intern = php_handlebars_options_fetch_object(object);
-    if( intern->options.scope ) {
-        zval z_scope = {0};
-        handlebars_value_to_zval(intern->options.scope, &z_scope);
-        object->handlers->write_property(object, member, &z_scope, NULL);
-        zval_ptr_dtor(&z_scope);
-        handlebars_value_dtor(intern->options.scope);
-        intern->options.scope = NULL;
-    }
-#else
-    struct php_handlebars_options_obj * intern = Z_HBS_OPTIONS_P(object);
-    if( intern->options.scope ) {
-        zval z_scope = {0};
-        handlebars_value_to_zval(intern->options.scope, &z_scope);
-        zend_update_property_ex(Z_OBJCE_P(object), object, INTERNED_SCOPE, &z_scope);
-        zval_ptr_dtor(&z_scope);
-        handlebars_value_dtor(intern->options.scope);
-        intern->options.scope = NULL;
-    }
-#endif
-    return intern->std_hnd->read_property(READ_PROPERTY_ARGS_PASSTHRU);
-}
-static zval * hbs_read_hash(READ_PROPERTY_ARGS)
-{
-#if PHP_MAJOR_VERSION >= 8
-    struct php_handlebars_options_obj * intern = php_handlebars_options_fetch_object(object);
-    if( intern->options.hash ) {
-        zval z_hash = {0};
-        handlebars_value_to_zval(intern->options.hash, &z_hash);
-        object->handlers->write_property(object, member, &z_hash, NULL);
-        zval_ptr_dtor(&z_hash);
-        handlebars_value_dtor(intern->options.hash);
-        intern->options.hash = NULL;
-    }
-#else
-    struct php_handlebars_options_obj * intern = Z_HBS_OPTIONS_P(object);
-    if( intern->options.hash ) {
-        zval z_hash = {0};
-        handlebars_value_to_zval(intern->options.hash, &z_hash);
-        zend_update_property_ex(Z_OBJCE_P(object), object, INTERNED_HASH, &z_hash);
-        zval_ptr_dtor(&z_hash);
-        handlebars_value_dtor(intern->options.hash);
-        intern->options.hash = NULL;
-    }
-#endif
-    return intern->std_hnd->read_property(READ_PROPERTY_ARGS_PASSTHRU);
-}
-static zval * hbs_read_data(READ_PROPERTY_ARGS)
-{
-#if PHP_MAJOR_VERSION >= 8
-    struct php_handlebars_options_obj * intern = php_handlebars_options_fetch_object(object);
-    if( intern->options.data ) {
-        zval z_data = {0};
-        handlebars_value_to_zval(intern->options.data, &z_data);
-        object->handlers->write_property(object, member, &z_data, NULL);
-        zval_ptr_dtor(&z_data);
-        handlebars_value_dtor(intern->options.data);
-        intern->options.data = NULL;
-    }
-#else
-    struct php_handlebars_options_obj * intern = Z_HBS_OPTIONS_P(object);
-    if( intern->options.data ) {
-        zval z_data = {0};
-        handlebars_value_to_zval(intern->options.data, &z_data);
-        zend_update_property_ex(Z_OBJCE_P(object), object, INTERNED_DATA, &z_data);
-        zval_ptr_dtor(&z_data);
-        handlebars_value_dtor(intern->options.data);
-        intern->options.data = NULL;
-    }
-#endif
-    return intern->std_hnd->read_property(READ_PROPERTY_ARGS_PASSTHRU);
-}
+// Note: hbs_read_scope, hbs_read_hash, and hbs_read_data handlers have been removed
+// because these properties are now eagerly converted to PHP in php_handlebars_options_ctor().
+// The standard property handler is sufficient for reading these properties.
 static zval *php_handlebars_options_object_read_property(READ_PROPERTY_ARGS)
 {
 #if PHP_MAJOR_VERSION >= 8
@@ -655,9 +601,8 @@ PHP_MINIT_FUNCTION(handlebars_options)
     register_prop_handler("name", hbs_read_name);
     register_prop_handler("program", hbs_read_program);
     register_prop_handler("inverse", hbs_read_inverse);
-    register_prop_handler("scope", hbs_read_scope);
-    register_prop_handler("hash", hbs_read_hash);
-    register_prop_handler("data", hbs_read_data);
+    // Note: scope, hash, and data are eagerly converted in php_handlebars_options_ctor()
+    // so they don't need custom read handlers - standard property access is sufficient
 
     // Note: declaring these may prevent dynamic initialization in PHP >= 7
 #if PHP_VERSION_ID >= 80000
