@@ -61,3 +61,4 @@ third-party
 tmp-php.ini
 vgcore.*
 /result*
+.DS_Store
